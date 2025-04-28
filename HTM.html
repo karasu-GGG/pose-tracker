@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🧘 Pose Tracker (Real-time)</title>
+  <style>
+    body { margin: 0; text-align: center; background: #fafafa; font-family: sans-serif; }
+    video, canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    button { margin: 10px; padding: 10px; font-size: 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <h1>🧘 Pose Tracker</h1>
+  
+  <div>
+    <button id="pose1">ท่าที่ 1: ยืดเข่าซ้าย</button>
+    <button id="pose2">ท่าที่ 2: ยืดเข่าขวา</button>
+    <button id="pose3">ท่าที่ 3: ยืดขาตรง</button>
+  </div>
+
+  <video id="video" width="640" height="480" autoplay muted playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  
+  <div id="countDisplay">Count: 0</div>
+  <div id="angleDisplay">Angle: 0</div>
+
+  <script type="module">
+    import { Pose } from 'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js';
+    import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+    import { drawConnectors, drawLandmarks } from 'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js';
+
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const countDisplay = document.getElementById('countDisplay');
+    const angleDisplay = document.getElementById('angleDisplay');
+
+    let poseType = 1; // Default pose is 1 (left leg stretch)
+    let count = 0; // Initialize count
+
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults((results) => {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      if (results.poseLandmarks) {
+        drawConnectors(canvasCtx, results.poseLandmarks, Pose.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+        drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF0000', lineWidth: 2 });
+      }
+      canvasCtx.restore();
+      
+      // Get landmarks
+      const landmarks = results.poseLandmarks;
+      const h = canvasElement.height;
+      const w = canvasElement.width;
+
+      if (poseType === 1 || poseType === 2) {
+        // Calculate knee angle for pose 1 and 2
+        const hip = [landmarks[Pose.PoseLandmark.LEFT_HIP.value].x, landmarks[Pose.PoseLandmark.LEFT_HIP.value].y];
+        const knee = [landmarks[Pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[Pose.PoseLandmark.LEFT_KNEE.value].y];
+        const ankle = [landmarks[Pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[Pose.PoseLandmark.LEFT_ANKLE.value].y];
+        const angle = calculateAngle(hip, knee, ankle);
+        
+        angleDisplay.textContent = `Angle: ${angle.toFixed(2)}°`;
+        
+        if (angle < 45) {
+          count += 1;
+          countDisplay.textContent = `Count: ${count}`;
+        }
+      }
+    });
+
+    function calculateAngle(a, b, c) {
+      const aVector = [a[0] - b[0], a[1] - b[1]];
+      const bVector = [c[0] - b[0], c[1] - b[1]];
+      const angle = Math.acos((aVector[0] * bVector[0] + aVector[1] * bVector[1]) / 
+                              (Math.sqrt(aVector[0] ** 2 + aVector[1] ** 2) * Math.sqrt(bVector[0] ** 2 + bVector[1] ** 2))) * 
+                              (180 / Math.PI);
+      return angle;
+    }
+
+    document.getElementById('pose1').addEventListener('click', () => { poseType = 1; });
+    document.getElementById('pose2').addEventListener('click', () => { poseType = 2; });
+    document.getElementById('pose3').addEventListener('click', () => { poseType = 3; });
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
+</body>
+</html>
